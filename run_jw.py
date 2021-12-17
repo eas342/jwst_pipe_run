@@ -28,10 +28,42 @@ import pdb
 
 from copy import deepcopy
 
+
+# Individual steps that make up calwebb_detector1
+from jwst.dq_init import DQInitStep
+from jwst.saturation import SaturationStep
+from jwst.superbias import SuperBiasStep
+from jwst.ipc import IPCStep                                                                                    
+from jwst.refpix import RefPixStep                                                                
+from jwst.linearity import LinearityStep
+from jwst.persistence import PersistenceStep
+from jwst.dark_current import DarkCurrentStep
+from jwst.jump import JumpStep
+from jwst.ramp_fitting import RampFitStep
+from jwst import datamodels
+
+
+# In[359]:
+
+
+## ES custom pipeline
+from tshirt.pipeline import phot_pipeline
+from tshirt.pipeline.instrument_specific import rowamp_sub
+import tqdm
+
 #Adding header modifications
 all_uncal_files = [] # All Uncalibrated File Names. Also use to check that all files have been modified by the loop.
 BaseDirectory = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/raw/'
-for fitsName in glob.glob(BaseDirectory + '*nrca3_uncal.fits'): #Grabbing only nrca3 files from the directory
+#BaseDirectory = '/fenrirdata1/es_tso/sim_data/mirage_035_hatp14_short_for_pipe_tests/raw/'
+searchString = '*nrca3_uncal.fits'
+#output_dir = '/fenrirdata1/es_tso/sim_data/mirage_035_hatp14_short_for_pipe_tests/stsci_proc/'
+#output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc/'
+output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc_003_es_refcor/'
+
+if os.path.exists(output_dir) == False:
+    os.makedirs(output_dir)
+
+for fitsName in glob.glob(BaseDirectory + searchString): #Grabbing only nrca3 files from the directory
     
     HDUList = fits.open(fitsName, 'update')
     HDUList[0].header['NOUTPUTS'] = (4, 'Number of output amplifiers') #This was not input at the time of the simulation. Therefore, we manually must input this information.
@@ -42,33 +74,145 @@ all_uncal_files = sorted(all_uncal_files) #sort files alphabetically.
 
 startTime = time.time() #Time how long this step takes
 
-for filename_stage1 in all_uncal_files:
+for uncal_file in all_uncal_files:
+        # Using the run() method. Instantiate and set parameters
+    dq_init_step = DQInitStep()
+    dq_init = dq_init_step.run(uncal_file)
     
-    # Instantiate the class. Do not provide a configuration file.
-    pipeline_stage1 = Detector1Pipeline()
     
-    # Manually set any desired non-default parameter values
+    # ## Saturation Flagging
+    # Using the run() method
+    saturation_step = SaturationStep()
+    # Call using the the output from the previously-run dq_init step
+    saturation = saturation_step.run(dq_init)
+    del dq_init ## try to save memory
     
-    # Default is to skip the persistence and IPC correction
-    # Make that explicit here
-    pipeline_stage1.persistence.skip = True
-    pipeline_stage1.ipc.skip = True
+    # Using the run() method
+    superbias_step = SuperBiasStep()
+    # superbias_step.output_dir = output_dir
+    # superbias_step.save_results = True
     
-    pipeline_stage1.refpix.skip = False # Make sure to skip steps appropriate if using an alternate ref pix correction method. Otherwise, the default is 'False'.
-    pipeline_stage1.superbias.skip = False
+    # Call using the the output from the previously-run saturation step
+    superbias = superbias_step.run(saturation)
+    del saturation ## try to save memory
     
-    # The default value for CR flagging is 3 or 4 sigma
-    # which tends to be too aggressive and flags noise.
-    # Set it to something more reasonable
-    #pipeline_stage1.jump.rejection_threshold = 9
-    pipeline_stage1.jump.skip=True # Currently we are skipping this step as we are testing the pipeline with this simulation and lots of the data gets flagged.
     
-    # Specify that you want results saved to a file
-    pipeline_stage1.save_results = True
-    pipeline_stage1.output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc_a3_skip_jumps/'
+    # Instantiate and set parameters
+    refpix_step = RefPixStep()
+    #refpix_step.output_dir = output_dir
+    #refpix_step.save_results = True
     
-    # Execute the pipeline using the run method
-    result_stage1 = pipeline_stage1.run(filename_stage1)
+    # try using a copy of the bias results as the refpix output
+    # refpix = refpix_step.run(superbias)
+    # es_refpix = deepcopy(refpix)
+    # the old way was to run the refpix and then replace it
+    es_refpix = deepcopy(superbias)
+    
+    ngroups = superbias.meta.exposure.ngroups
+    nints = superbias.data.shape[0] ## use the array size because segmented data could have fewer ints
+    ## (instead of 
+    
+    # First, make sure that the aperture looks good. Here I have cheated and used a final rampfit result.
+    
+    # In[389]:
+    
+    
+    photParam = {'refStarPos': [[1052,57]],'backStart':100,'backEnd': 101,
+                 'FITSextension': 1,
+                 'isCube': True,'cubePlane':0,'procFiles':'jw01442001001_01101_00001_nrca3_1_rampfitstep.fits'}
+    phot = phot_pipeline.phot(directParam=photParam)
+    
+    
+    # In[390]:
+    
+    
+    #phot.showStamps(showPlot=True,boxsize=200,vmin=0,vmax=1)
+    
+    
+    # Everything inside the larger blue circle will be masked when doing reference pixel corrections
+    
+    # In[391]:
+    
+    
+    for oneInt in tqdm.tqdm(np.arange(nints)):
+        for oneGroup in np.arange(ngroups):
+            
+            rowSub, modelImg = rowamp_sub.do_backsub(superbias.data[oneInt,oneGroup,:,:],phot)
+            es_refpix.data[oneInt,oneGroup,:,:] = rowSub
+    
+    
+    # # Linearity Step
+    
+    # In[328]:
+    del superbias ## try to save memory
+    
+    # Using the run() method
+    linearity_step = LinearityStep()
+    # refpix step
+    linearity = linearity_step.run(es_refpix)
+    del es_refpix ## try to save memory
+    
+    # # Persistence Step
+    
+    # Using the run() method
+    persist_step = PersistenceStep()
+
+    # skip for now since ref files are zeros
+    persist_step.skip = True
+    
+    persist = persist_step.run(linearity)
+    del linearity ## try to save memory
+    
+    # # Dark current step
+    
+    # Using the run() method
+    dark_step = DarkCurrentStep()
+    
+    # There was a CRDS error so I'm skipping
+    dark_step.skip = True
+    
+    # Call using the persistence instance from the previously-run
+    # persistence step
+    dark = dark_step.run(persist)
+
+    del persist ## try to save memory
+    
+    # # Jump Step
+    
+    # In[335]:
+    
+    
+    # Using the run() method
+    jump_step = JumpStep()
+    #jump_step.output_dir = output_dir
+    #jump_step.save_results = True
+    jump_step.rejection_threshold = 15
+    
+    # Call using the dark instance from the previously-run
+    # dark current subtraction step
+    jump = jump_step.run(dark)
+    del dark ## try to save memory
+    
+    # # Ramp Fitting
+    
+    # In[344]:
+    
+    
+    # Using the run() method
+    ramp_fit_step = RampFitStep()
+    ramp_fit_step.output_dir = output_dir
+    ramp_fit_step.save_results = True
+    
+    # Let's save the optional outputs, in order
+    # to help with visualization later
+    #ramp_fit_step.save_opt = True
+    
+    # Call using the dark instance from the previously-run
+    # jump step
+    ramp_fit = ramp_fit_step.run(jump)
+    del jump ## try to save memory
+    del ramp_fit ## try to save memory
+    
     
 executionTime = (time.time() - startTime)
 print('Stage 1 Execution Time in Seconds: ' + str(executionTime)) #Time how long this step takes
