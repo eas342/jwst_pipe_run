@@ -53,17 +53,24 @@ import tqdm
 
 #Adding header modifications
 all_uncal_files = [] # All Uncalibrated File Names. Also use to check that all files have been modified by the loop.
-BaseDirectory = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/raw/'
+#BaseDirectory = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/raw/'
 #BaseDirectory = '/fenrirdata1/es_tso/sim_data/mirage_035_hatp14_short_for_pipe_tests/raw/'
-searchString = '*nrca3_uncal.fits'
+#searchString = '*nrca3_uncal.fits'
+
+#rawFileSearch = BaseDirectory + searchString
+rawFileSearch = "/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/raw/*nrca1_uncal.fits"
+
 #output_dir = '/fenrirdata1/es_tso/sim_data/mirage_035_hatp14_short_for_pipe_tests/stsci_proc/'
 #output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc/'
-output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc_003_es_refcor/'
+#output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc_003_es_refcor/'
+output_dir = '/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/proc_roeba_nrca1/'
+
+rawList = np.sort(glob.glob(rawFileSearch))
 
 if os.path.exists(output_dir) == False:
     os.makedirs(output_dir)
 
-for fitsName in glob.glob(BaseDirectory + searchString): #Grabbing only nrca3 files from the directory
+for fitsName in rawList: #Grabbing only these files from the directory
     
     HDUList = fits.open(fitsName, 'update')
     HDUList[0].header['NOUTPUTS'] = (4, 'Number of output amplifiers') #This was not input at the time of the simulation. Therefore, we manually must input this information.
