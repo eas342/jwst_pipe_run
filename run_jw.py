@@ -58,12 +58,24 @@ all_uncal_files = [] # All Uncalibrated File Names. Also use to check that all f
 #searchString = '*nrca3_uncal.fits'
 
 #rawFileSearch = BaseDirectory + searchString
-rawFileSearch = "/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/raw/*nrca1_uncal.fits"
 
 #output_dir = '/fenrirdata1/es_tso/sim_data/mirage_035_hatp14_short_for_pipe_tests/stsci_proc/'
 #output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc/'
 #output_dir = '/fenrirdata1/es_tso/sim_data/mirage_032_hatp14_car33_no_backg/stsci_proc_003_es_refcor/'
-output_dir = '/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/proc_roeba_nrca1/'
+#rawFileSearch = "/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/raw/*nrca1_uncal.fits"
+#output_dir = '/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/proc_roeba_nrca1/'
+#rawFileSearch = "/fenrirdata1/es_tso/sim_data/mirage_029_hd189733b_transit/raw/*nrca1_uncal.fits"
+#rawFileSearch = "/fenrirdata1/es_tso/sim_data/mirage_037_hatp14_lower_well_frac/raw/*nrca3_uncal.fits"
+#output_dir = "/fenrirdata1/es_tso/sim_data/mirage_037_hatp14_lower_well_frac/proc_roeba_nrca3"
+rawFileSearch = "/fenrirdata1/es_tso/sim_data/mirage_038_hatp14_no_backg_source/raw/*nrca3_uncal.fits"
+output_dir = "/fenrirdata1/es_tso/sim_data/mirage_038_hatp14_no_backg_source/proc_roeba_nrca3"
+
+max_cores = "half"
+#photParam = {'refStarPos': [[67.0 - 1.0,30.0 - 1.0]],'backStart':49,'backEnd': 50,
+photParam = {'refStarPos': [[1052,57]],'backStart':100,'backEnd': 101,
+             'FITSextension': 1,
+             'isCube': True,'cubePlane':0,'procFiles':'*.fits'}
+
 
 rawList = np.sort(glob.glob(rawFileSearch))
 
@@ -124,9 +136,6 @@ for uncal_file in all_uncal_files:
     # In[389]:
     
     
-    photParam = {'refStarPos': [[1052,57]],'backStart':100,'backEnd': 101,
-                 'FITSextension': 1,
-                 'isCube': True,'cubePlane':0,'procFiles':'jw01442001001_01101_00001_nrca3_1_rampfitstep.fits'}
     phot = phot_pipeline.phot(directParam=photParam)
     
     
@@ -194,7 +203,8 @@ for uncal_file in all_uncal_files:
     #jump_step.output_dir = output_dir
     #jump_step.save_results = True
     jump_step.rejection_threshold = 15
-    
+
+    jump_step.maximum_cores = max_cores
     # Call using the dark instance from the previously-run
     # dark current subtraction step
     jump = jump_step.run(dark)
@@ -207,6 +217,8 @@ for uncal_file in all_uncal_files:
     
     # Using the run() method
     ramp_fit_step = RampFitStep()
+    ramp_fit_step.maximum_cores = max_cores
+    
     ramp_fit_step.output_dir = output_dir
     ramp_fit_step.save_results = True
     
